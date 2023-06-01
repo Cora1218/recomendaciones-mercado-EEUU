@@ -1,2 +1,6 @@
-ETL.ipynb
-
+.venv*
+.__mypy_cache*
+.vscode*
+__pycache__*
+*.swp
+data*
