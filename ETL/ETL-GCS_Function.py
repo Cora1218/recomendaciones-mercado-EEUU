@@ -47,7 +47,7 @@ def hello_gcs(event: dict, context) -> None:
                     # as an iterable object to save memory
                     df_data = pd.read_json(
                         f"gs://{event['bucket']}/{file_name}",
-                        lines = True,
+                        lines=True,
                         chunksize=300_000
                     )
                 else:
@@ -123,9 +123,18 @@ def hello_gcs(event: dict, context) -> None:
                     table_name = "Metadata"
                     dataset = main_folder.split("_")[0]
                     for chunk in df_data:
-                        chunk["platform"] = "google"
                         chunk["states"] = chunk["address"].str.extract(r",\s([A-Z]{2})\s\d{5}")
                         chunk = chunk[chunk["states"].isin(["CA", "PA", "NY", "FL", "TX"])]
+                        chunk["category"] = chunk["category"].apply(
+                            lambda x: clean_categories(x) if (
+                                pd.notna(x)
+                                and isinstance(x, (list, str))
+                            ) else "No category assigned"
+                        )
+                        chunk["category"] = chunk["category"].str.lower()
+                        chunk["main_category"] = "other"
+                        chunk["main_category"] = chunk["category"].apply(categorize)
+                        chunk = chunk[chunk["main_category"] == "food services"]
                         chunk.drop(
                             columns=[
                                 "address",
@@ -145,16 +154,7 @@ def hello_gcs(event: dict, context) -> None:
                             },
                             inplace=True
                         )
-                        chunk["category"] = chunk["category"].apply(
-                            lambda x: clean_categories(x) if (
-                                pd.notna(x)
-                                and isinstance(x, list)
-                            ) else "No category assigned"
-                        )
-                        chunk["category"] = chunk["category"].str.lower()
-                        chunk["main_category"] = "other"
-                        chunk["main_category"] = chunk["category"].apply(categorize)
-                        chunk = chunk[chunk["main_category"] == "food services"]
+                        chunk["platform"] = "google"
                         chunk = chunk.applymap(
                             lambda x: json.dumps(x) if isinstance(x, (list, dict)) else x
                         )
@@ -221,18 +221,7 @@ def hello_gcs(event: dict, context) -> None:
                     states = ["TX", "CA", "PA", "NY", "FL"]
                     for chunk in df_data:
                         chunk = chunk.loc[:, :"hours"]
-                        chunk["platform"] = "yelp"
                         chunk = chunk[chunk["state"].isin(states)]
-                        chunk.drop(
-                            columns=[
-                                "address",
-                                "postal_code",
-                                "is_open",
-                                "attributes",
-                                "hours"
-                            ],
-                            inplace=True
-                        )
                         chunk.rename(
                             columns={
                                 "name": "local_name",
@@ -245,13 +234,24 @@ def hello_gcs(event: dict, context) -> None:
                         chunk["category"] = chunk["category"].apply(
                             lambda x: clean_categories(x) if (
                                 pd.notna(x)
-                                and isinstance(x, list)
+                                and isinstance(x, (list, str))
                             ) else "No category assigned"
                         )
                         chunk["category"] = chunk["category"].str.lower()
                         chunk["main_category"] = "other"
                         chunk["main_category"] = chunk["category"].apply(categorize)
                         chunk = chunk[chunk["main_category"] == "food services"]
+                        chunk.drop(
+                            columns=[
+                                "address",
+                                "postal_code",
+                                "is_open",
+                                "attributes",
+                                "hours"
+                            ],
+                            inplace=True
+                        )
+                        chunk["platform"] = "yelp"
                         chunk = chunk.applymap(
                             lambda x: json.dumps(x) if isinstance(x, (list, dict)) else x
                         )
@@ -353,6 +353,7 @@ def classify_comment(comment: str) -> str:
     This function uses the TextBlob module to determine the
     inherent sentiment present in the string provided.
     """
+
     if comment:
         sentiment = TextBlob(comment).sentiment.polarity
         if sentiment > 0:
@@ -370,10 +371,11 @@ def clean_categories(chain: str) -> str:
     This function turns the category column in the datasets into
     a string, as it looks like a list inside of the DataFrame.
     """
+
     # Remove list-like elements by replacing them via a regex
     clean_chain = re.sub(r"[\[\]'\"]", "", chain)
-    if "," in chain:
-        return clean_chain.split(',')
+    if "," in clean_chain:
+        return ",".join(clean_chain)
     else:
         return clean_chain
 
@@ -388,7 +390,8 @@ def categorize(row: str) -> str:
     # We define the main_categories and their keywords
     food_services = ["restaurant", "cafe", "food", "pub", "bar",
                     "coffee", "breakfast", "brunch", "bakery",
-                    "sandwich", "ice cream", "gastropubs", "snacks"]
+                    "sandwich", "ice cream", "gastropubs", "snacks"
+                    "pizza", "pasta", "gelato", "dessert", "candy"]
     hotel_services = ["hotel", "hostel", "residence", "inn", "lodging"]
     health_care_services = ["medical", "dental", "dentist", "hospital"
                             "emergency", "nursing", "nursery"]
