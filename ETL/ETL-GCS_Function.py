@@ -4,7 +4,6 @@ from pandas.io import gbq
 from google.cloud import bigquery
 from textblob import TextBlob
 
-import re
 import json
 
 
@@ -86,6 +85,7 @@ def hello_gcs(event: dict, context) -> None:
                             unit="ms"
                         ).dt.strftime("%Y-%m-%d")
                         chunk["date"] = pd.to_datetime(chunk["date"], format="%Y-%m-%d")
+                        chunk = chunk[chunk["date"].dt.year >= 2009]
                         chunk["feeling"] = chunk["opinion"].apply(
                             lambda x: classify_comment(x) if pd.notna(x) else "No message"
                         )
@@ -101,6 +101,19 @@ def hello_gcs(event: dict, context) -> None:
                                 chunk["state"] = "TX"
                             case "Florida":
                                 chunk["state"] = "FL"
+
+                        chunk["resp"] = chunk["resp"].apply(
+                            lambda x: x["text"] if (
+                                pd.notna(x)
+                                and isinstance(x, dict)
+                            ) else "No response"
+                        )
+                        chunk = chunk.applymap(
+                            lambda x: json.dumps(x) if isinstance(x, (list, dict)) else x,
+                            na_action="ignore"
+                        )
+                        chunk.drop_duplicates(inplace=True)
+                        chunk.reset_index(drop=True, inplace=True)
 
                         chunk.to_gbq(
                             f"{dataset}.{table_name}",
@@ -156,7 +169,8 @@ def hello_gcs(event: dict, context) -> None:
                         )
                         chunk["platform"] = "google"
                         chunk = chunk.applymap(
-                            lambda x: json.dumps(x) if isinstance(x, (list, dict)) else x
+                            lambda x: json.dumps(x) if isinstance(x, (list, dict)) else x,
+                            na_action="ignore"
                         )
                         chunk.drop_duplicates(inplace=True)
                         chunk.reset_index(drop=True, inplace=True)
@@ -183,6 +197,14 @@ def hello_gcs(event: dict, context) -> None:
             match table_name:
                 case "review":
                     for chunk in df_data:
+                        chunk["date"] = pd.to_datetime(
+                            chunk["date"]
+                        ).dt.strftime("%Y-%m-%d")
+                        chunk["date"] = pd.to_datetime(
+                            chunk["date"],
+                            format="%Y-%m-%d"
+                        )
+                        chunk = chunk[chunk["date"].dt.year >= 2009]
                         chunk.drop(
                             columns=["cool", "funny", "useful"],
                             inplace=True
@@ -191,16 +213,15 @@ def hello_gcs(event: dict, context) -> None:
                             columns={"text": "opinion", "stars": "rating"},
                             inplace=True
                         )
-                        chunk["date"] = pd.to_datetime(
-                            chunk["date"]
-                        ).dt.strftime("%Y-%m-%d")
-                        chunk["date"] = pd.to_datetime(
-                            chunk["date"],
-                            format="%Y-%m-%d"
-                        )
                         chunk["feeling"] = chunk["opinion"].apply(
                             lambda x: classify_comment(x) if pd.notna(x) else "No message"
                         )
+                        chunk = chunk.applymap(
+                            lambda x: json.dumps(x) if isinstance(x, (list, dict)) else x,
+                            na_action="ignore"
+                        )
+                        chunk.drop_duplicates(inplace=True)
+                        chunk.reset_index(drop=True, inplace=True)
 
                         chunk.to_gbq(
                             f"{dataset}.{table_name}",
@@ -253,7 +274,8 @@ def hello_gcs(event: dict, context) -> None:
                         )
                         chunk["platform"] = "yelp"
                         chunk = chunk.applymap(
-                            lambda x: json.dumps(x) if isinstance(x, (list, dict)) else x
+                            lambda x: json.dumps(x) if isinstance(x, (list, dict)) else x,
+                            na_action="ignore"
                         )
                         chunk.drop_duplicates(inplace=True)
                         chunk.reset_index(drop=True, inplace=True)
@@ -366,18 +388,17 @@ def classify_comment(comment: str) -> str:
         return "No message"
 
 
-def clean_categories(chain: str) -> str:
+def clean_categories(chain: list | str) -> str:
     """
     This function turns the category column in the datasets into
-    a string, as it looks like a list inside of the DataFrame.
+    a string, by joining its elements together if chain is a
+    list, otherwise, returns the string itself.
     """
 
-    # Remove list-like elements by replacing them via a regex
-    clean_chain = re.sub(r"[\[\]'\"]", "", chain)
-    if "," in clean_chain:
-        return ",".join(clean_chain)
-    else:
-        return clean_chain
+    if isinstance(chain, list):
+        return ", ".join(chain)
+    elif isinstance(chain, str):
+        return chain
 
 
 def categorize(row: str) -> str:
