@@ -396,9 +396,9 @@ def categorize(row: str) -> str:
 
     if any(keyword in row for keyword in food_services if (
         "publi" not in row
-        or "barber" not in row
-        or "supply" not in row
-        or "massage" not in row
+        and "barber" not in row
+        and "supply" not in row
+        and "massage" not in row
     )):
         return "food services" 
     elif any(keyword in row for keyword in hotel_services):
