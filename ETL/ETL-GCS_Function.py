@@ -136,7 +136,12 @@ def hello_gcs(event: dict, context) -> None:
                     table_name = "Metadata"
                     dataset = main_folder.split("_")[0]
                     for chunk in df_data:
-                        chunk["states"] = chunk["address"].str.extract(r",\s([A-Z]{2})\s\d{5}")
+                        chunk["states"] = chunk["address"].apply(
+                            lambda x: x.str.extract(r",\s([A-Z]{2})\s\d{5}$") if (
+                                pd.notna(x)
+                                and isinstance(x, str)
+                            ) else "No address"
+                        )
                         chunk = chunk[chunk["states"].isin(["CA", "PA", "NY", "FL", "TX"])]
                         chunk["category"] = chunk["category"].apply(
                             lambda x: clean_categories(x) if (
@@ -186,6 +191,8 @@ def hello_gcs(event: dict, context) -> None:
                                 {"name": "main_category", "type": "STRING"},
                                 {"name": "platform", "type": "STRING"},
                                 {"name": "states", "type": "STRING"},
+                                {"name": "latitude", "type": "FLOAT"},
+                                {"name": "longitude", "type": "FLOAT"},
                                 {"name": "url", "type": "STRING"}
                             ]
                         )
