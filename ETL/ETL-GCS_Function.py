@@ -136,19 +136,17 @@ def hello_gcs(event: dict, context) -> None:
                     table_name = "Metadata"
                     dataset = main_folder.split("_")[0]
                     for chunk in df_data:
-                        chunk["states"] = chunk["address"].apply(
-                            lambda x: x.str.extract(r",\s([A-Z]{2})\s\d{5}$") if (
-                                pd.notna(x)
-                                and isinstance(x, str)
-                            ) else "No address"
-                        )
+                        chunk["states"] = chunk["address"].str.extract(
+                            r",\s([A-Z]{2})\s\d{5}$",
+                            expand=False
+                        ).fillna("No address")
                         chunk = chunk[chunk["states"].isin(["CA", "PA", "NY", "FL", "TX"])]
+                        chunk["city"] = chunk["address"].str.split(
+                            ","
+                        ).str[-2].fillna("No address")
                         chunk["category"] = chunk["category"].apply(
-                            lambda x: clean_categories(x) if (
-                                pd.notna(x)
-                                and isinstance(x, (list, str))
-                            ) else "No category assigned"
-                        )
+                            clean_categories
+                        ).fillna("No category assigned")
                         chunk["category"] = chunk["category"].str.lower()
                         chunk["main_category"] = "other"
                         chunk["main_category"] = chunk["category"].apply(categorize)
@@ -190,6 +188,7 @@ def hello_gcs(event: dict, context) -> None:
                                 {"name": "category", "type": "STRING"},
                                 {"name": "main_category", "type": "STRING"},
                                 {"name": "platform", "type": "STRING"},
+                                {"name": "city", "type": "STRING"},
                                 {"name": "states", "type": "STRING"},
                                 {"name": "latitude", "type": "FLOAT"},
                                 {"name": "longitude", "type": "FLOAT"},
@@ -260,11 +259,8 @@ def hello_gcs(event: dict, context) -> None:
                             inplace=True
                         )
                         chunk["category"] = chunk["category"].apply(
-                            lambda x: clean_categories(x) if (
-                                pd.notna(x)
-                                and isinstance(x, (list, str))
-                            ) else "No category assigned"
-                        )
+                            clean_categories
+                        ).fillna("No category assigned")
                         chunk["category"] = chunk["category"].str.lower()
                         chunk["main_category"] = "other"
                         chunk["main_category"] = chunk["category"].apply(categorize)
@@ -347,35 +343,6 @@ def hello_gcs(event: dict, context) -> None:
                             ]
                         )
 
-                case "tip":
-                    for chunk in df_data:
-                        chunk.drop(
-                            columns=["compliment_count"],
-                            inplace=True
-                        )
-                        chunk.rename(
-                            columns={"text": "opinion"},
-                            inplace=True
-                        )
-                        chunk["feeling"] = chunk["opinion"].apply(
-                            lambda x: classify_comment(x) if pd.notna(x) else "No message"
-                        )
-                        chunk.drop_duplicates(inplace=True)
-                        chunk.reset_index(drop=True, inplace=True)
-
-                        chunk.to_gbq(
-                            f"{dataset}.{table_name}",
-                            if_exists="append",
-                            location="us",
-                            table_schema=[
-                                {"name": "user_id", "type": "STRING"},
-                                {"name": "business_id", "type": "STRING"},
-                                {"name": "date", "type": "DATETIME"},
-                                {"name": "opinion", "type": "STRING"},
-                                {"name": "feeling", "type": "STRING"}
-                            ]
-                        )
-
 
 def classify_comment(comment: str) -> str:
     """
@@ -418,16 +385,24 @@ def categorize(row: str) -> str:
     # We define the main_categories and their keywords
     food_services = ["restaurant", "cafe", "food", "pub", "bar",
                     "coffee", "breakfast", "brunch", "bakery",
-                    "sandwich", "ice cream", "gastropubs", "snacks"
-                    "pizza", "pasta", "gelato", "dessert", "candy"]
+                    "sandwich", "ice cream", "gastropubs", "snacks",
+                    "pizza", "pasta", "gelatto", "dessert", "candy",
+                    "thai", "sushi", "sashimi", "vegan", "steak",
+                    "meat", "chicken", "fries", "fried", "nugget",
+                    "barbecue", "bbq", "takeout", "burger", "ramen"]
     hotel_services = ["hotel", "hostel", "residence", "inn", "lodging"]
     health_care_services = ["medical", "dental", "dentist", "hospital"
                             "emergency", "nursing", "nursery"]
 
-    if any(keyword in row for keyword in hotel_services):
-        return "hotel services"
-    elif any(keyword in row for keyword in food_services):
+    if any(keyword in row for keyword in food_services if (
+        "publi" not in row
+        or "barber" not in row
+        or "supply" not in row
+        or "massage" not in row
+    )):
         return "food services" 
+    elif any(keyword in row for keyword in hotel_services):
+        return "hotel services"
     elif any(keyword in row for keyword in health_care_services):
         return "health care services"
     elif row == "No category assigned":
