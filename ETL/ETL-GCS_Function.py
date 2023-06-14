@@ -37,25 +37,20 @@ def hello_gcs(event: dict, context) -> None:
 
         # Check if the type of the file is json    
         case "json":
-            try:
-                # Load the Json file as is
-                df_data = pd.read_json(f"gs://{event['bucket']}/{file_name}")
-            except ValueError as e:
-                if "Trailing data" in str(e):
-                    # Load json with 'lines=True' argument and in chunks,
-                    # as an iterable object to save memory
-                    df_data = pd.read_json(
-                        f"gs://{event['bucket']}/{file_name}",
-                        lines=True,
-                        chunksize=300_000
-                    )
-                else:
-                    # Print out other kinds of errors
-                    print("An error occurred while loading the JSON file:", e)
+            # Load json with 'lines=True' argument and in chunks,
+            # as an iterable object to save memory
+            df_data = pd.read_json(
+                f"gs://{event['bucket']}/{file_name}",
+                lines=True,
+                chunksize=300_000
+            )
 
         # Check if the type of the file is parquet
         case "parquet":
-            df_data = pd.read_parquet(f"gs://{event['bucket']}/{file_name}")
+            df_data = pd.read_parquet(
+                f"gs://{event['bucket']}/{file_name}",
+                columns=["user_id", "review_count"]
+            )
 
     main_folder = file_name.split("/")[0]
     last_folder = file_name.split("/")[file_name.count("/")-1]
@@ -302,46 +297,20 @@ def hello_gcs(event: dict, context) -> None:
                         )
 
                 case "user":
-                    for chunk in df_data:
-                        chunk.drop(
-                            columns=[
-                                "Unnamed: 0",
-                                "name",
-                                "yelping_since",
-                                "useful",
-                                "funny",
-                                "cool",
-                                "elite",
-                                "fans",
-                                "average_stars",
-                                "compliment_hot",
-                                "compliment_more",
-                                "compliment_profile",
-                                "compliment_cute",
-                                "compliment_list",
-                                "compliment_note",
-                                "compliment_plain",
-                                "compliment_cool",
-                                "compliment_funny",
-                                "compliment_writer",
-                                "compliment_photos"
-                            ],
-                            inplace=True
-                        )
-                        chunk.rename(
-                            columns={"review_count": "num_of_reviews"},
-                            inplace=True
-                        )
+                    df_data.rename(
+                        columns={"review_count": "num_of_reviews"},
+                        inplace=True
+                    )
 
-                        chunk.to_gbq(
-                            f"{dataset}.{table_name}",
-                            if_exists="append",
-                            location="us",
-                            table_schema=[
-                                {"name": "user_id", "type": "STRING"},
-                                {"name": "num_of_reviews", "type": "INTEGER"}
-                            ]
-                        )
+                    df_data.to_gbq(
+                        f"{dataset}.{table_name}",
+                        if_exists="append",
+                        location="us",
+                        table_schema=[
+                            {"name": "user_id", "type": "STRING"},
+                            {"name": "num_of_reviews", "type": "INTEGER"}
+                        ]
+                    )
 
 
 def classify_comment(comment: str) -> str:
