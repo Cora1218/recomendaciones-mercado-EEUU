@@ -1,6 +1,7 @@
+from google.cloud import storage
+import joblib
 import pandas as pd
 import pandas_gbq
-import joblib
 from surprise import (
     Reader,
     Dataset,
@@ -10,7 +11,6 @@ from surprise.model_selection import (
     train_test_split,
     GridSearchCV
 )
-from google.cloud import storage
 
 
 PROJECT_ID: str = "proyectofinal-389001"
