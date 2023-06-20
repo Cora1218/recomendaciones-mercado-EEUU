@@ -1,0 +1,9 @@
+steps:
+# Build container image
+- name: "gcr.io/cloud-builders/docker"
+  args: ["build", "-t", "gcr.io/proyectofinal-389001/datawise-consulting-training", "."]
+# Push container image to Container Registry
+- name: "gcr.io/cloud-builders/docker"
+  args: ["push", "gcr.io/proyectofinal-389001/datawise-consulting-training"]
+images:
+- gcr.io/proyectofinal-389001/datawise-consulting-training
