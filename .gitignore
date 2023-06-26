@@ -1,4 +1,3 @@
-ETL.ipynb
 credenciales/
 data/
 .venv*
@@ -6,4 +5,4 @@ data/
 .vscode*
 __pycache__*
 *.swp
-data*
+*.joblib
